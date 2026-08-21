@@ -481,7 +481,7 @@ async function showUnlockedView() {
   window.clearInterval(alertRefreshTimer);
   alertRefreshTimer = window.setInterval(() => loadAlerts({ quiet: true }).catch(() => {}), 15000);
   window.clearInterval(priceRefreshTimer);
-  priceRefreshTimer = window.setInterval(() => refreshAlertPrices(), 10000);
+  priceRefreshTimer = window.setInterval(() => refreshAlertPrices(), 3000);
 }
 
 accessForm.addEventListener("submit", async (event) => {
