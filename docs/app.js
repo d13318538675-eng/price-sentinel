@@ -37,6 +37,8 @@ let alertRefreshTimer = null;
 let searchTimer = null;
 let binanceSymbols = [];
 let selectedToken = null;
+let currentAlerts = [];
+let priceRefreshTimer = null;
 
 const hide = (element, shouldHide = true) => element.classList.toggle("hidden", shouldHide);
 
@@ -364,6 +366,7 @@ function createText(tag, text, className = "") {
 }
 
 function renderAlerts(alerts) {
+  currentAlerts = alerts;
   const activeCount = alerts.filter((item) => item.enabled && !item.triggered_at).length;
   alertCount.textContent = `${activeCount} 个进行中`;
   alertsRoot.replaceChildren();
@@ -379,6 +382,7 @@ function renderAlerts(alerts) {
     const condition = item.direction === "above" ? "涨到" : "跌到";
     const card = document.createElement("article");
     card.className = "alert-card";
+    card.dataset.id = String(item.id);
 
     const icon = createText("div", base.replace(/[·\s]/g, "").slice(0, 4), "token-icon");
     const main = document.createElement("div");
@@ -395,7 +399,9 @@ function renderAlerts(alerts) {
     );
     const target = document.createElement("div");
     target.className = "alert-target";
-    target.append("当前 ", createText("strong", money(item.last_price)), ` · ${condition} `);
+    const priceEl = createText("strong", money(item.last_price));
+    priceEl.dataset.price = "";
+    target.append("当前 ", priceEl, ` · ${condition} `);
     target.append(createText("strong", money(item.target_price)), " 时提醒");
     main.append(title, target);
 
@@ -413,6 +419,21 @@ function renderAlerts(alerts) {
     actions.append(toggle, remove);
     card.append(icon, main, actions);
     alertsRoot.append(card);
+  }
+  refreshAlertPrices();
+}
+
+async function refreshAlertPrices() {
+  for (const item of currentAlerts) {
+    if (!item.enabled || item.triggered_at) continue;
+    try {
+      const price = await fetchPrice(item.symbol);
+      const card = document.querySelector(`.alert-card[data-id="${item.id}"]`);
+      const el = card?.querySelector("[data-price]");
+      if (el) el.textContent = money(price);
+    } catch {
+      // 单个币查价失败不影响其它提醒。
+    }
   }
 }
 
@@ -441,6 +462,7 @@ async function loadAlerts({ quiet = false } = {}) {
 
 function showLockedView(message = "") {
   window.clearInterval(alertRefreshTimer);
+  window.clearInterval(priceRefreshTimer);
   accountLabel.textContent = "";
   hide(signoutButton);
   hide(appView);
@@ -458,6 +480,8 @@ async function showUnlockedView() {
   await Promise.all([loadAlerts(), loadQuote(), loadAccount()]);
   window.clearInterval(alertRefreshTimer);
   alertRefreshTimer = window.setInterval(() => loadAlerts({ quiet: true }).catch(() => {}), 15000);
+  window.clearInterval(priceRefreshTimer);
+  priceRefreshTimer = window.setInterval(() => refreshAlertPrices(), 10000);
 }
 
 accessForm.addEventListener("submit", async (event) => {
