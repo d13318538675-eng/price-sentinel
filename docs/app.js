@@ -16,6 +16,7 @@ const mailInput = $("#mail-input");
 const mailStatus = $("#mail-status");
 const alertForm = $("#alert-form");
 const coinInput = $("#coin-input");
+const coinList = $("#coin-list");
 const targetInput = $("#target-price-input");
 const quote = $("#quote");
 const alertsRoot = $("#alerts");
@@ -33,6 +34,9 @@ let supabase = null;
 let accessCode = localStorage.getItem(ACCESS_CODE_KEY) || sessionStorage.getItem(ACCESS_CODE_KEY) || "";
 let quoteTimer = null;
 let alertRefreshTimer = null;
+let searchTimer = null;
+let binanceSymbols = [];
+let selectedToken = null;
 
 const hide = (element, shouldHide = true) => element.classList.toggle("hidden", shouldHide);
 
@@ -92,12 +96,93 @@ const COIN_ALIASES = {
   "露娜": "LUNA", "luna": "LUNA", "LUNA": "LUNA",
 };
 
-function symbolFromInput() {
+async function loadBinanceSymbols() {
+  try {
+    const response = await fetch("https://data-api.binance.vision/api/v3/ticker/price", { signal: AbortSignal.timeout(8000) });
+    const data = await response.json();
+    binanceSymbols = (Array.isArray(data) ? data : [])
+      .map((x) => x.symbol)
+      .filter((s) => typeof s === "string" && s.endsWith("USDT") && !s.endsWith("DOWNUSDT") && !s.endsWith("UPUSDT"));
+  } catch {
+    binanceSymbols = [];
+  }
+}
+
+function currentTokenKey() {
+  if (selectedToken) return selectedToken.key;
   const raw = coinInput.value.trim();
   const alias = COIN_ALIASES[raw] || COIN_ALIASES[raw.toUpperCase()];
   const base = (alias || raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!base) return "";
   return base.endsWith("USDT") ? base : `${base}USDT`;
+}
+
+function tokenLabel(key) {
+  const s = String(key || "");
+  if (s.startsWith("DEX:")) {
+    const parts = s.split(":");
+    return `${parts[3]} · 链上`;
+  }
+  return s.replace(/USDT$/, "");
+}
+
+async function searchCoins(q) {
+  const results = [];
+  const uq = q.toUpperCase();
+  const alias = COIN_ALIASES[q] || COIN_ALIASES[uq];
+  if (alias) {
+    const key = alias.endsWith("USDT") ? alias : `${alias}USDT`;
+    results.push({ key, label: alias, tag: "现货" });
+  }
+  for (const s of binanceSymbols) {
+    if (s.startsWith(uq) && !s.endsWith("DOWNUSDT") && !s.endsWith("UPUSDT")) {
+      results.push({ key: s, label: s.replace(/USDT$/, ""), tag: "现货" });
+      if (results.length >= 15) break;
+    }
+  }
+  try {
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(6000) });
+    if (response.ok) {
+      const data = await response.json();
+      const seen = new Set();
+      for (const pair of data.pairs || []) {
+        const bt = pair.baseToken;
+        if (!bt || !bt.address || !bt.name) continue;
+        const key = `DEX:${pair.chainId}:${bt.address}:${bt.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({ key, label: bt.name, tag: "链上", chain: pair.chainId });
+        if (results.length >= 30) break;
+      }
+    }
+  } catch {
+    // 链上搜索失败则忽略。
+  }
+  return results;
+}
+
+function renderCoinList(results) {
+  coinList.replaceChildren();
+  if (!results.length) {
+    hide(coinList);
+    return;
+  }
+  for (const result of results) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "coin-option";
+    const label = createText("span", result.label);
+    const tag = createText("small", result.tag + (result.chain ? ` · ${result.chain}` : ""));
+    item.append(label, tag);
+    item.addEventListener("click", () => {
+      selectedToken = result;
+      coinInput.value = result.label;
+      hide(coinList);
+      loadQuote();
+    });
+    coinList.append(item);
+  }
+  hide(coinList, false);
 }
 
 function readableError(error, fallback = "操作失败，请稍后再试。") {
@@ -187,10 +272,26 @@ function forgetAccessCode() {
   accessCode = "";
 }
 
-async function fetchPrice(symbol) {
+async function fetchDexPrice(tokenKey) {
+  const parts = tokenKey.split(":");
+  const chain = parts[1];
+  const contract = parts[2];
+  const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${contract}`, { signal: AbortSignal.timeout(7000) });
+  if (!response.ok) throw new Error("price unavailable");
+  const data = await response.json();
+  const pairs = (data.pairs || []).filter((p) => p.chainId === chain && p.priceUsd && Number(p.liquidity?.usd || 0) > 0);
+  if (!pairs.length) throw new Error("price unavailable");
+  pairs.sort((a, b) => Number(b.liquidity.usd || 0) - Number(a.liquidity.usd || 0));
+  const price = Number(pairs[0].priceUsd);
+  if (!Number.isFinite(price) || price <= 0) throw new Error("price unavailable");
+  return price;
+}
+
+async function fetchPrice(tokenKey) {
+  if (String(tokenKey).startsWith("DEX:")) return fetchDexPrice(tokenKey);
   const endpoints = [
-    `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`,
-    `https://data-api.binance.vision/api/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`,
+    `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(tokenKey)}`,
+    `https://data-api.binance.vision/api/v3/ticker/price?symbol=${encodeURIComponent(tokenKey)}`,
   ];
   for (const endpoint of endpoints) {
     try {
@@ -208,21 +309,51 @@ async function fetchPrice(symbol) {
 
 async function loadQuote() {
   window.clearTimeout(quoteTimer);
-  const symbol = symbolFromInput();
-  if (symbol.length < 5) return;
-  const base = symbol.replace(/USDT$/, "");
-  quote.replaceChildren(createText("span", `${base} 当前价格`), createText("b", "正在读取…"));
+  const key = currentTokenKey();
+  if (!key) return;
+  const label = tokenLabel(key);
+  quote.replaceChildren(createText("span", `${label} 当前价格`), createText("b", "正在读取…"));
   try {
-    const price = await fetchPrice(symbol);
-    quote.replaceChildren(createText("span", `${base} 当前价格`), createText("b", money(price)));
+    const price = await fetchPrice(key);
+    quote.replaceChildren(createText("span", `${label} 当前价格`), createText("b", money(price)));
   } catch {
-    quote.replaceChildren(createText("span", `${base} 当前价格`), createText("b", "未找到该交易对"));
+    quote.replaceChildren(createText("span", `${label} 当前价格`), createText("b", "未找到该币"));
   }
 }
 
 coinInput.addEventListener("input", () => {
-  coinInput.value = coinInput.value.toUpperCase();
-  quoteTimer = window.setTimeout(loadQuote, 350);
+  const q = coinInput.value.trim();
+  selectedToken = null;
+  window.clearTimeout(searchTimer);
+  window.clearTimeout(quoteTimer);
+  if (!q) {
+    hide(coinList);
+    return;
+  }
+  searchTimer = window.setTimeout(async () => {
+    try {
+      renderCoinList(await searchCoins(q));
+    } catch {
+      hide(coinList);
+    }
+  }, 280);
+  quoteTimer = window.setTimeout(loadQuote, 700);
+});
+
+coinInput.addEventListener("focus", () => {
+  if (coinInput.value.trim()) {
+    searchTimer = window.setTimeout(async () => {
+      try {
+        renderCoinList(await searchCoins(coinInput.value.trim()));
+      } catch {
+        hide(coinList);
+      }
+    }, 200);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!coinList.contains(event.target) && event.target !== coinInput) hide(coinList);
 });
 
 function createText(tag, text, className = "") {
@@ -243,18 +374,18 @@ function renderAlerts(alerts) {
   }
 
   for (const item of alerts) {
-    const base = String(item.symbol).replace(/USDT$/, "");
+    const base = tokenLabel(item.symbol);
     const active = item.enabled && !item.triggered_at;
     const condition = item.direction === "above" ? "涨到" : "跌到";
     const card = document.createElement("article");
     card.className = "alert-card";
 
-    const icon = createText("div", base.slice(0, 4), "token-icon");
+    const icon = createText("div", base.replace(/[·\s]/g, "").slice(0, 4), "token-icon");
     const main = document.createElement("div");
     main.className = "alert-main";
     const title = document.createElement("div");
     title.className = "alert-title";
-    title.append(createText("b", `${base} / USDT`));
+    title.append(createText("b", base));
     title.append(
       createText(
         "span",
@@ -359,8 +490,8 @@ alertForm.addEventListener("submit", async (event) => {
   if (!accessCode) return;
   const button = alertForm.querySelector("button[type='submit']");
   const targetPrice = Number(targetInput.value);
-  const symbol = symbolFromInput();
-  if (symbol.length < 5) return setFormMessage("请填写正确的币种。", "error");
+  const symbol = currentTokenKey();
+  if (symbol.length < 5) return setFormMessage("请填写或选择正确的币种。", "error");
   if (!Number.isFinite(targetPrice) || targetPrice <= 0) return setFormMessage("请填写大于 0 的触发价。", "error");
 
   setButtonBusy(button, true, "正在创建…");
@@ -412,6 +543,7 @@ alertsRoot.addEventListener("click", async (event) => {
 });
 
 async function boot() {
+  loadBinanceSymbols();
   if (!configured) {
     hide(authView);
     hide(appView);
