@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07120f" />
+    <meta
+      name="description"
+      content="币价哨兵：每 5 秒云端检查 Binance 现货价格，到价后发送邮件提醒。"
+    />
+    <title>币价哨兵</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="币价哨兵首页">
+          <span class="brand-mark">¥</span>
+          <span>币价哨兵</span>
+        </a>
+        <div class="top-actions">
+          <span class="account-email" id="account-label"></span>
+          <button class="signout hidden" id="signout-button" type="button">退出</button>
+          <div class="cloud-state"><span class="pulse"></span>云端运行中</div>
+        </div>
+      </header>
+
+      <section class="auth-view" id="auth-view">
+        <div class="auth-copy">
+          <p class="eyebrow">PRICE SENTINEL · 24/7</p>
+          <h1>填一次，<br /><span>云端替你盯盘。</span></h1>
+          <p class="lead">
+            输入你的私人访问口令，再填写币种和目标价。达到条件时发邮件提醒，只提醒一次，电脑关机也不影响。
+          </p>
+          <div class="benefits" aria-label="功能说明">
+            <div><b>5 秒</b><span>检查一次价格</span></div>
+            <div><b>单人专用</b><span>一个口令直接进入</span></div>
+            <div><b>全天运行</b><span>无需打开网页</span></div>
+          </div>
+        </div>
+
+        <section class="auth-card" aria-labelledby="auth-title">
+          <div class="auth-badge">私人专用</div>
+          <h2 id="auth-title">输入访问口令</h2>
+          <p id="auth-description">这是你的私人入口，不用注册，也不用等待验证码。</p>
+
+          <form id="access-form">
+            <label class="field" for="access-code-input">
+              <span>访问口令</span>
+              <input
+                id="access-code-input"
+                name="accessCode"
+                type="password"
+                autocomplete="current-password"
+                placeholder="输入你的访问口令"
+                required
+              />
+            </label>
+            <label class="remember-choice" for="remember-device-input">
+              <input id="remember-device-input" name="rememberDevice" type="checkbox" checked />
+              <span>记住本设备，下次自动进入</span>
+            </label>
+            <button class="primary" type="submit">进入我的提醒</button>
+          </form>
+
+          <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+          <p class="privacy-note">口令只保存在你的浏览器中，网页代码里没有真实口令。</p>
+        </section>
+      </section>
+
+      <section class="app-view hidden" id="app-view">
+        <section class="app-hero">
+          <div>
+            <p class="eyebrow">PRICE SENTINEL · 24/7</p>
+            <h1>你的价格提醒</h1>
+            <p class="lead">保存后由云端持续监控，达到条件就发到你预设的邮箱。</p>
+          </div>
+          <div class="orbit-card" aria-label="监控频率">
+            <div class="orbit-ring"><div class="coin">₿</div></div>
+            <div class="orbit-copy"><b>每 5 秒</b><span>自动检查价格</span></div>
+          </div>
+        </section>
+
+        <section class="mail-card" aria-labelledby="mail-title">
+          <div class="mail-copy">
+            <h3 id="mail-title">收件邮箱</h3>
+            <p>到价提醒将发送到这个邮箱，可随时修改。</p>
+          </div>
+          <form id="mail-form" class="mail-form">
+            <input
+              id="mail-input"
+              type="email"
+              name="mail"
+              placeholder="name@example.com"
+              autocomplete="email"
+              required
+            />
+            <button class="primary" type="submit">保存邮箱</button>
+          </form>
+          <p class="form-note" id="mail-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="workspace">
+          <form class="composer" id="alert-form">
+            <div class="section-heading">
+              <div><span class="step">01</span><h2>新建价格提醒</h2></div>
+              <p>支持 Binance 现货交易对</p>
+            </div>
+
+            <label class="field" for="coin-input">
+              <span>币种</span>
+              <div class="symbol-input">
+                <input id="coin-input" name="coin" value="BTC" autocomplete="off" maxlength="12" required />
+                <span>/ USDT</span>
+              </div>
+            </label>
+
+            <fieldset class="condition">
+              <legend>触发条件</legend>
+              <label>
+                <input type="radio" name="direction" value="above" checked />
+                <span><b>涨到</b><small>价格 ≥ 目标价</small></span>
+              </label>
+              <label>
+                <input type="radio" name="direction" value="below" />
+                <span><b>跌到</b><small>价格 ≤ 目标价</small></span>
+              </label>
+            </fieldset>
+
+            <label class="field" for="target-price-input">
+              <span>触发价（USDT）</span>
+              <div class="price-input">
+                <span>$</span>
+                <input
+                  id="target-price-input"
+                  name="targetPrice"
+                  inputmode="decimal"
+                  placeholder="例如 70000"
+                  required
+                />
+              </div>
+            </label>
+
+            <div class="quote" id="quote"><span>BTC 当前价格</span><b>正在读取…</b></div>
+            <button class="primary" type="submit"><span>＋</span>开始监控</button>
+            <p class="form-note" id="form-message" role="status" aria-live="polite">
+              触发后会自动停止，避免重复发送邮件。
+            </p>
+          </form>
+
+          <section class="watchlist" aria-live="polite">
+            <div class="section-heading">
+              <div><span class="step">02</span><h2>正在盯盘</h2></div>
+              <p id="alert-count">读取中</p>
+            </div>
+            <div class="alerts" id="alerts">
+              <div class="loading-card">正在读取你的提醒…</div>
+            </div>
+          </section>
+        </section>
+
+        <footer>
+          <div><span>01</span><p><b>口令保护</b>只有你能管理提醒</p></div>
+          <div><span>02</span><p><b>5 秒检查</b>使用 Binance 现货价格</p></div>
+          <div><span>03</span><p><b>邮件提醒</b>发送到你预设的邮箱</p></div>
+        </footer>
+      </section>
+
+      <section class="setup-view hidden" id="setup-view">
+        <div class="setup-card">
+          <span class="step">准备中</span>
+          <h2>云端服务尚未连接</h2>
+          <p>页面已经准备好，连接云端服务后即可使用私人访问口令。</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
