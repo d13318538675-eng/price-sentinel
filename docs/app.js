@@ -43,8 +43,44 @@ function money(value) {
   return `$${number.toLocaleString("en-US", { maximumFractionDigits: digits })}`;
 }
 
+const COIN_ALIASES = {
+  "比特币": "BTC", "btc": "BTC", "BTC": "BTC",
+  "以太坊": "ETH", "eth": "ETH", "ETH": "ETH",
+  "币安币": "BNB", "bnb": "BNB", "BNB": "BNB",
+  "瑞波币": "XRP", "xrp": "XRP", "XRP": "XRP",
+  "狗狗币": "DOGE", "doge": "DOGE", "DOGE": "DOGE",
+  "卡尔达诺": "ADA", "艾达币": "ADA", "ada": "ADA", "ADA": "ADA",
+  "索拉纳": "SOL", "sol": "SOL", "SOL": "SOL",
+  "波卡": "DOT", "dot": "DOT", "DOT": "DOT",
+  "莱特币": "LTC", "ltc": "LTC", "LTC": "LTC",
+  "比特币现金": "BCH", "bch": "BCH", "BCH": "BCH",
+  "柚子": "EOS", "eos": "EOS", "EOS": "EOS",
+  "柴犬币": "SHIB", "shib": "SHIB", "SHIB": "SHIB",
+  "波场": "TRX", "trx": "TRX", "TRX": "TRX",
+  "雪崩币": "AVAX", "avax": "AVAX", "AVAX": "AVAX",
+  "马蹄莲": "MATIC", "多边形": "MATIC", "matic": "MATIC", "MATIC": "MATIC",
+  "链接币": "LINK", "link": "LINK", "LINK": "LINK",
+  "优币": "UNI", "uni": "UNI", "UNI": "UNI",
+  "阿童木": "ATOM", "atom": "ATOM", "ATOM": "ATOM",
+  "恒星币": "XLM", "xlm": "XLM", "XLM": "XLM",
+  "文件币": "FIL", "fil": "FIL", "FIL": "FIL",
+  "以太经典": "ETC", "etc": "ETC", "ETC": "ETC",
+  "新星": "NEAR", "near": "NEAR", "NEAR": "NEAR",
+  "阿普托斯": "APT", "apt": "APT", "APT": "APT",
+  "阿比特": "ARB", "arb": "ARB", "ARB": "ARB",
+  "乐观币": "OP", "op": "OP", "OP": "OP",
+  "龙币": "SUI", "sui": "SUI", "SUI": "SUI",
+  "西伊币": "SEI", "sei": "SEI", "SEI": "SEI",
+  "小币": "PEPE", "pepe": "PEPE", "PEPE": "PEPE",
+  "世界币": "WLD", "wld": "WLD", "WLD": "WLD",
+  "重组": "RNDR", "rndr": "RNDR", "RNDR": "RNDR",
+};
+
 function symbolFromInput() {
-  const base = coinInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const raw = coinInput.value.trim();
+  const alias = COIN_ALIASES[raw] || COIN_ALIASES[raw.toUpperCase()];
+  const base = (alias || raw).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!base) return "";
   return base.endsWith("USDT") ? base : `${base}USDT`;
 }
 
@@ -169,7 +205,7 @@ async function loadQuote() {
 }
 
 coinInput.addEventListener("input", () => {
-  coinInput.value = coinInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  coinInput.value = coinInput.value.toUpperCase();
   quoteTimer = window.setTimeout(loadQuote, 350);
 });
 
