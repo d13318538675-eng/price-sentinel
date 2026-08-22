@@ -23,6 +23,9 @@ const alertsRoot = $("#alerts");
 const alertCount = $("#alert-count");
 const formMessage = $("#form-message");
 const toast = $("#toast");
+const lootCount = $("#loot-count");
+const lootGridEl = $("#loot-grid");
+const lootListEl = $("#loot-list");
 
 const ACCESS_CODE_KEY = "price-sentinel-access-code";
 const configured =
@@ -437,6 +440,92 @@ async function refreshAlertPrices() {
   }
 }
 
+let lootData = [];
+let lootSelectedDay = null;
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+function dayKey(s) {
+  return String(s || "").slice(0, 10);
+}
+
+async function loadLoot() {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/loot_activities?select=id,title,category,reason,source,url,detected_at&order=detected_at.desc&limit=200`;
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}` },
+    });
+    if (!res.ok) throw new Error("load loot failed");
+    const data = await res.json();
+    lootData = Array.isArray(data) ? data : [];
+  } catch {
+    lootData = [];
+  }
+  lootCount.textContent = `${lootData.length} 条活动`;
+  const now = new Date();
+  lootSelectedDay = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  renderLootCalendar();
+  renderLootList();
+}
+
+function renderLootCalendar() {
+  lootGridEl.replaceChildren();
+  for (const w of ["日", "一", "二", "三", "四", "五", "六"]) lootGridEl.append(createText("div", w, "loot-dow"));
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const startPad = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  const daySet = new Set(lootData.map((x) => dayKey(x.detected_at)));
+  for (let i = 0; i < startPad; i++) lootGridEl.append(createText("div", "", "loot-day loot-empty"));
+  for (let d = 1; d <= days; d++) {
+    const ds = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.textContent = String(d);
+    cell.className = "loot-day" + (daySet.has(ds) ? " has" : "") + (ds === lootSelectedDay ? " selected" : "");
+    cell.addEventListener("click", () => {
+      lootSelectedDay = ds;
+      renderLootCalendar();
+      renderLootList();
+    });
+    lootGridEl.append(cell);
+  }
+}
+
+function renderLootList() {
+  lootListEl.replaceChildren();
+  const items = lootData.filter((x) => dayKey(x.detected_at) === lootSelectedDay);
+  if (!items.length) {
+    lootListEl.append(createText("div", "这一天没有新发现的撸毛活动。", "empty-card"));
+    return;
+  }
+  const hasFuture = items.some((x) => {
+    const p = Date.parse(x.detected_at);
+    const t = Date.parse(lootSelectedDay + "T00:00:00Z");
+    return Number.isFinite(p) && p >= t;
+  });
+  if (hasFuture && lootSelectedDay > dayKey(new Date().toISOString())) {
+    lootListEl.append(createText("div", "这些是未来日期的活动，去看看！", "empty-card"));
+  }
+  for (const it of items) {
+    const card = document.createElement("article");
+    card.className = "loot-item";
+    const head = document.createElement("div");
+    head.className = "loot-item-head";
+    head.append(createText("span", it.category || "活动", "loot-cat"));
+    head.append(createText("span", dayKey(it.detected_at), "loot-date"));
+    const title = createText("a", it.title, "loot-title");
+    title.href = it.url || "#";
+    title.target = "_blank";
+    title.rel = "noopener";
+    const reason = createText("p", it.reason || "", "loot-reason");
+    card.append(head, title, reason);
+    lootListEl.append(card);
+  }
+}
+
 async function requestAlerts(code = accessCode) {
   const { data, error } = await supabase.rpc("personal_alerts_list", { p_access_code: code });
   if (error) throw error;
@@ -478,6 +567,7 @@ async function showUnlockedView() {
   hide(authView);
   hide(appView, false);
   await Promise.all([loadAlerts(), loadQuote(), loadAccount()]);
+  loadLoot();
   window.clearInterval(alertRefreshTimer);
   alertRefreshTimer = window.setInterval(() => loadAlerts({ quiet: true }).catch(() => {}), 15000);
   window.clearInterval(priceRefreshTimer);
