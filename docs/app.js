@@ -452,7 +452,7 @@ function dayKey(s) {
 
 async function loadLoot() {
   try {
-    const url = `${SUPABASE_URL}/rest/v1/loot_activities?select=id,title,category,reason,source,url,detected_at&order=detected_at.desc&limit=200`;
+    const url = `${SUPABASE_URL}/rest/v1/loot_activities?select=id,title,category,reason,source,url,detected_at,score,profit,cost,difficulty&order=score.desc&limit=50`;
     const res = await fetch(url, {
       headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}` },
     });
@@ -514,14 +514,21 @@ function renderLootList() {
     card.className = "loot-item";
     const head = document.createElement("div");
     head.className = "loot-item-head";
+    const score = Number(it.score || 0);
+    head.append(createText("span", `评分 ${score}`, score >= 8 ? "loot-cat hot" : "loot-cat"));
     head.append(createText("span", it.category || "活动", "loot-cat"));
     head.append(createText("span", dayKey(it.detected_at), "loot-date"));
     const title = createText("a", it.title, "loot-title");
     title.href = it.url || "#";
     title.target = "_blank";
     title.rel = "noopener";
+    const meta = document.createElement("div");
+    meta.className = "loot-meta";
+    if (it.profit) meta.append(createText("span", `💰 利润：${it.profit}`, "meta-pill"));
+    if (it.cost) meta.append(createText("span", `成本：${it.cost}`, "meta-pill"));
+    if (it.difficulty) meta.append(createText("span", `难度：${it.difficulty}`, "meta-pill"));
     const reason = createText("p", it.reason || "", "loot-reason");
-    card.append(head, title, reason);
+    card.append(head, title, meta, reason);
     lootListEl.append(card);
   }
 }
